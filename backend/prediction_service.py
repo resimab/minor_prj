@@ -20,6 +20,7 @@ MODEL_PATH = (
 
 
 MODEL_FEATURES = [
+    # Grouped/composite features used by the trained model
     "cultural_activity_score",
     "accessibility_score",
     "competition_pressure_score",
@@ -28,12 +29,11 @@ MODEL_FEATURES = [
     "health_activity_score",
     "attraction_score",
     "commercial_score",
+    # Required contextual/auxiliary features
     "search_area",
-    # Optional metrics retained for compatibility
     "avg_restaurant_rating_500m",
     "avg_review_ratings_500m",
     "nearest_restaurant_m",
-    
 ]
 
 
@@ -212,14 +212,48 @@ def predict_feasibility(
     Predict restaurant-location feasibility.
     """
 
-    validate_features(
-        location_features
-    )
+    # Convert raw POI counts (returned by collect_location_features)
+    # into the grouped/composite feature set expected by the model.
+    def safe_get(name: str) -> float:
+        val = location_features.get(name, 0)
+        try:
+            return float(val) if val is not None else 0.0
+        except Exception:
+            return 0.0
 
-    model_input = pd.DataFrame(
-        [location_features],
-        columns=MODEL_FEATURES
-    )
+    grouped = {
+        "cultural_activity_score": (
+            safe_get("cinema_count_500m")
+            + safe_get("museum_count_500m")
+            + safe_get("recreation_count_500m")
+        ),
+        "accessibility_score": (
+            safe_get("bus_stop_count_500m") + safe_get("parking_space_count_500m")
+        ),
+        "competition_pressure_score": safe_get("competitor_count_500m"),
+        "education_score": safe_get("college_count_500m") + safe_get("school_count_500m"),
+        "market_gap_score": max(
+            0.0,
+            (safe_get("retail_count_500m") + safe_get("office_count_500m"))
+            - safe_get("competitor_count_500m"),
+        ),
+        "health_activity_score": safe_get("clinic_count_500m") + safe_get("hospital_count_500m"),
+        "attraction_score": (
+            safe_get("museum_count_500m") + safe_get("cinema_count_500m") + safe_get("temple_count_500m")
+        ),
+        "commercial_score": (
+            safe_get("bank_count_500m") + safe_get("office_count_500m") + safe_get("retail_count_500m")
+        ),
+        # auxiliary features passed through
+        "search_area": location_features.get("search_area"),
+        "avg_restaurant_rating_500m": safe_get("avg_restaurant_rating_500m"),
+        "avg_review_ratings_500m": safe_get("avg_review_ratings_500m"),
+        "nearest_restaurant_m": safe_get("nearest_restaurant_m"),
+    }
+
+    validate_features(grouped)
+
+    model_input = pd.DataFrame([grouped], columns=MODEL_FEATURES)
 
     predicted_class = model_pipeline.predict(
         model_input

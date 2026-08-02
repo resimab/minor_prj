@@ -20,24 +20,20 @@ MODEL_PATH = (
 
 
 MODEL_FEATURES = [
-    "bank_count_500m",
-    "bus_stop_count_500m",
-    "cinema_count_500m",
-    "clinic_count_500m",
-    "college_count_500m",
-    "hospital_count_500m",
-    "museum_count_500m",
-    "office_count_500m",
-    "parking_space_count_500m",
-    "recreation_count_500m",
-    "retail_count_500m",
-    "school_count_500m",
-    "temple_count_500m",
-    "nearest_restaurant_m",
-    "competitor_count_500m",
+    "cultural_activity_score",
+    "accessibility_score",
+    "competition_pressure_score",
+    "education_score",
+    "market_gap_score",
+    "health_activity_score",
+    "attraction_score",
+    "commercial_score",
+    "search_area",
+    # Optional metrics retained for compatibility
     "avg_restaurant_rating_500m",
     "avg_review_ratings_500m",
-    "search_area"
+    "nearest_restaurant_m",
+    
 ]
 
 
@@ -70,6 +66,38 @@ if model_pipeline is None:
     raise ValueError(
         "The saved model package does not contain a pipeline."
     )
+
+
+# Compatibility shim: ensure LogisticRegression estimators have a
+# `multi_class` attribute when missing (can occur across sklearn versions).
+def _ensure_logistic_multi_class_attribute(pipeline_obj):
+    try:
+        if hasattr(pipeline_obj, "named_steps"):
+            for step in pipeline_obj.named_steps.values():
+                if step.__class__.__name__ == "LogisticRegression":
+                    if not hasattr(step, "multi_class"):
+                        if hasattr(step, "classes_"):
+                            classes = getattr(step, "classes_")
+                            step.multi_class = (
+                                "multinomial" if len(classes) > 2 else "ovr"
+                            )
+                        else:
+                            step.multi_class = "ovr"
+        elif pipeline_obj.__class__.__name__ == "LogisticRegression":
+            if not hasattr(pipeline_obj, "multi_class"):
+                if hasattr(pipeline_obj, "classes_"):
+                    classes = getattr(pipeline_obj, "classes_")
+                    pipeline_obj.multi_class = (
+                        "multinomial" if len(classes) > 2 else "ovr"
+                    )
+                else:
+                    pipeline_obj.multi_class = "ovr"
+    except Exception:
+        pass
+
+
+# Apply shim right after loading the pipeline
+_ensure_logistic_multi_class_attribute(model_pipeline)
 
 
 def convert_numpy_value(

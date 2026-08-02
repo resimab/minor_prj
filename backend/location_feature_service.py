@@ -501,13 +501,80 @@ def collect_location_features(
         )
     )
 
+    # Build composite scores from raw POI and restaurant features.
+    # These composite names are returned to the frontend and used
+    # as model inputs by the prediction service.
+    def safe(name: str) -> float:
+        return float(poi_features.get(name, 0) or 0)
+
+    competitor_count = float(
+        restaurant_features.get("competitor_count_500m", 0) or 0
+    )
+
+    cultural_activity_score = (
+        safe("cinema_count_500m")
+        + safe("museum_count_500m")
+        + safe("recreation_count_500m")
+    )
+
+    accessibility_score = (
+        safe("bus_stop_count_500m")
+        + safe("parking_space_count_500m")
+    )
+
+    competition_pressure_score = competitor_count
+
+    education_score = (
+        safe("college_count_500m")
+        + safe("school_count_500m")
+    )
+
+    # Market gap: available commercial POIs minus competition
+    market_gap_score = max(
+        0.0,
+        (safe("retail_count_500m") + safe("office_count_500m")) - competitor_count,
+    )
+
+    health_activity_score = (
+        safe("clinic_count_500m")
+        + safe("hospital_count_500m")
+    )
+
+    attraction_score = (
+        safe("museum_count_500m")
+        + safe("cinema_count_500m")
+        + safe("temple_count_500m")
+    )
+
+    commercial_score = (
+        safe("bank_count_500m")
+        + safe("office_count_500m")
+        + safe("retail_count_500m")
+    )
+
     location_features: Dict[
         str,
         FeatureValue
     ] = {
-        **poi_features,
-        **restaurant_features,
-        "search_area": search_area
+        "cultural_activity_score": round(cultural_activity_score, 4),
+        "accessibility_score": round(accessibility_score, 4),
+        "competition_pressure_score": round(competition_pressure_score, 4),
+        "education_score": round(education_score, 4),
+        "market_gap_score": round(market_gap_score, 4),
+        "health_activity_score": round(health_activity_score, 4),
+        "attraction_score": round(attraction_score, 4),
+        "commercial_score": round(commercial_score, 4),
+        "search_area": search_area,
+        # Keep some restaurant metrics in case frontend or model expects them
+        "avg_restaurant_rating_500m": restaurant_features.get(
+            "avg_restaurant_rating_500m", 0.0
+        ),
+        "avg_review_ratings_500m": restaurant_features.get(
+            "avg_review_ratings_500m", 0.0
+        ),
+        "nearest_restaurant_m": restaurant_features.get(
+            "nearest_restaurant_m", FEATURE_RADIUS_M
+        ),
     }
 
     return location_features
